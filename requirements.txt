@@ -1,0 +1,10 @@
+pyserial>=3.5
+matplotlib>=3.8
+numpy>=1.26
+PyQt5>=5.15
+scikit-learn>=1.4
+pandas>=2.0
+joblib>=1.3
+
+
+
