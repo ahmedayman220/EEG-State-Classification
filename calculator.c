@@ -23,7 +23,7 @@ void delay_ms(unsigned int ms)
 {
     unsigned int i, j;
     for(i = 0; i < ms; i++)
-        for(j = 0; j < 123; j++);   // ~1ms at 11.0592MHz (approx)
+        for(j = 0; j < 123; j++);
 }
 
 // =============== LCD FUNCTIONS ===========
@@ -101,40 +101,35 @@ void lcd_print_num(long n)
 void lcd_init(void)
 {
     delay_ms(20);
-    lcd_cmd(0x38);   // 8-bit, 2 line
-    lcd_cmd(0x0C);   // display ON, cursor OFF
-    lcd_cmd(0x06);   // entry mode
+    lcd_cmd(0x38);
+    lcd_cmd(0x0C);
+    lcd_cmd(0x06);
     lcd_clear();
 }
 
 // =============== KEYPAD SCAN =============
 char keypad_scan(void)
 {
-    // Make sure port is released (inputs high)
     C1 = C2 = C3 = C4 = 1;
 
-    // ---- Column 1 LOW ----
     C1=0; C2=1; C3=1; C4=1;
     if(R1==0) return '7';
     if(R2==0) return '4';
     if(R3==0) return '1';
     if(R4==0) return 'C';
 
-    // ---- Column 2 LOW ----
     C1=1; C2=0; C3=1; C4=1;
     if(R1==0) return '8';
     if(R2==0) return '5';
     if(R3==0) return '2';
     if(R4==0) return '0';
 
-    // ---- Column 3 LOW ----
     C1=1; C2=1; C3=0; C4=1;
     if(R1==0) return '9';
     if(R2==0) return '6';
     if(R3==0) return '3';
     if(R4==0) return '=';
 
-    // ---- Column 4 LOW ----
     C1=1; C2=1; C3=1; C4=0;
     if(R1==0) return '/';
     if(R2==0) return '*';
@@ -144,11 +139,9 @@ char keypad_scan(void)
     return 0;
 }
 
-// wait until key released (simple debounce)
 char keypad_getkey(void)
 {
     char k;
-
     while(1)
     {
         k = keypad_scan();
@@ -157,7 +150,7 @@ char keypad_getkey(void)
             delay_ms(25);
             if(keypad_scan() == k)
             {
-                while(keypad_scan() != 0); // wait release
+                while(keypad_scan() != 0);
                 return k;
             }
         }
@@ -165,7 +158,7 @@ char keypad_getkey(void)
 }
 
 // =============== CALC LOGIC ==============
-long calc_apply(long a, long b, char op, bit *err)
+long calc_apply(long a, long b, char op, unsigned char *err)
 {
     *err = 0;
 
@@ -176,7 +169,7 @@ long calc_apply(long a, long b, char op, bit *err)
         case '*': return a * b;
         case '/':
             if(b == 0) { *err = 1; return 0; }
-            return a / b;  // integer division
+            return a / b;
         default:  return b;
     }
 }
@@ -186,13 +179,12 @@ void main(void)
 {
     long num1 = 0, num2 = 0, res = 0;
     char op = 0;
-    bit have_op = 0;
-    bit err = 0;
+    unsigned char have_op = 0;
+    unsigned char err = 0;
     char key;
 
-    // release port pins (good practice)
-    P0 = 0xFF;   // LCD data (Port0 uses pull-ups externally)
-    P3 = 0xFF;   // keypad lines to high
+    P0 = 0xFF;
+    P3 = 0xFF;
 
     lcd_init();
 
@@ -209,7 +201,6 @@ void main(void)
     {
         key = keypad_getkey();
 
-        // CLEAR
         if(key == 'C')
         {
             num1 = 0; num2 = 0; res = 0;
@@ -222,7 +213,6 @@ void main(void)
             continue;
         }
 
-        // OPERATOR
         if(key=='+' || key=='-' || key=='*' || key=='/')
         {
             if(!have_op)
@@ -236,7 +226,6 @@ void main(void)
             continue;
         }
 
-        // EQUAL
         if(key == '=')
         {
             if(have_op)
@@ -246,14 +235,13 @@ void main(void)
                 lcd_clear();
                 lcd_goto(0,0);
                 lcd_print("Result:");
-
                 lcd_goto(1,0);
+
                 if(err)
                     lcd_print("Error: /0");
                 else
                     lcd_print_num(res);
 
-                // make next calculation start from result
                 num1 = err ? 0 : res;
                 num2 = 0;
                 have_op = 0;
@@ -262,7 +250,6 @@ void main(void)
             continue;
         }
 
-        // DIGIT
         if(key >= '0' && key <= '9')
         {
             lcd_data(key);
