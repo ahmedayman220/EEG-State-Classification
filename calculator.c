@@ -1,56 +1,60 @@
 #include <REGX52.H>
 
-// ---------------- LCD PINS ----------------
-#define LCD_DATA P2
+// ================= LCD ===================
+#define LCD_DATA P0
 
-sbit LCD_RS = P3^0;
-sbit LCD_RW = P3^1;
-sbit LCD_EN = P3^2;
+sbit RS = P2^0;
+sbit RW = P2^1;
+sbit EN = P2^2;
 
-// ---------------- KEYPAD PORT -------------
-#define KEYPAD P1
+// ================= KEYPAD ===============
+sbit C1 = P3^4;   // pin14
+sbit C2 = P3^5;   // pin15
+sbit C3 = P3^6;   // pin16
+sbit C4 = P3^7;   // pin17
 
-// ----------- simple delay -----------------
+sbit R1 = P3^2;   // pin12
+sbit R2 = P3^1;   // pin11
+sbit R3 = P3^0;   // pin10
+sbit R4 = P3^3;   // pin13
+
+// =============== DELAY ===================
 void delay_ms(unsigned int ms)
 {
     unsigned int i, j;
     for(i = 0; i < ms; i++)
-        for(j = 0; j < 123; j++);  // ~1ms at ~11.0592MHz (approx)
+        for(j = 0; j < 123; j++);   // ~1ms at 11.0592MHz (approx)
 }
 
-// --------------- LCD low level ------------
-void lcd_pulse_enable(void)
+// =============== LCD FUNCTIONS ===========
+void lcd_pulse(void)
 {
-    LCD_EN = 1;
+    EN = 1;
     delay_ms(2);
-    LCD_EN = 0;
+    EN = 0;
+    delay_ms(2);
 }
 
 void lcd_cmd(unsigned char cmd)
 {
-    LCD_RS = 0;
-    LCD_RW = 0;
+    RS = 0;
+    RW = 0;
     LCD_DATA = cmd;
-    lcd_pulse_enable();
-    delay_ms(2);
+    lcd_pulse();
 }
 
 void lcd_data(unsigned char dat)
 {
-    LCD_RS = 1;
-    LCD_RW = 0;
+    RS = 1;
+    RW = 0;
     LCD_DATA = dat;
-    lcd_pulse_enable();
-    delay_ms(2);
+    lcd_pulse();
 }
 
-void lcd_init(void)
+void lcd_clear(void)
 {
-    delay_ms(20);
-    lcd_cmd(0x38); // 8-bit, 2 line, 5x7
-    lcd_cmd(0x0C); // display ON, cursor OFF
-    lcd_cmd(0x01); // clear
-    lcd_cmd(0x06); // entry mode
+    lcd_cmd(0x01);
+    delay_ms(2);
 }
 
 void lcd_goto(unsigned char row, unsigned char col)
@@ -61,9 +65,10 @@ void lcd_goto(unsigned char row, unsigned char col)
     lcd_cmd(addr);
 }
 
-void lcd_print(char *s)
+void lcd_print(char *str)
 {
-    while(*s) lcd_data(*s++);
+    while(*str)
+        lcd_data(*str++);
 }
 
 void lcd_print_num(long n)
@@ -93,58 +98,77 @@ void lcd_print_num(long n)
         lcd_data(buf[i]);
 }
 
-// ------------- KEYPAD scan ----------------
-// Mapping table
-const char keymap[4][4] = {
-    {'1','2','3','+'},
-    {'4','5','6','-'},
-    {'7','8','9','*'},
-    {'C','0','=','/'}
-};
+void lcd_init(void)
+{
+    delay_ms(20);
+    lcd_cmd(0x38);   // 8-bit, 2 line
+    lcd_cmd(0x0C);   // display ON, cursor OFF
+    lcd_cmd(0x06);   // entry mode
+    lcd_clear();
+}
 
+// =============== KEYPAD SCAN =============
+char keypad_scan(void)
+{
+    // Make sure port is released (inputs high)
+    C1 = C2 = C3 = C4 = 1;
+
+    // ---- Column 1 LOW ----
+    C1=0; C2=1; C3=1; C4=1;
+    if(R1==0) return '7';
+    if(R2==0) return '4';
+    if(R3==0) return '1';
+    if(R4==0) return 'C';
+
+    // ---- Column 2 LOW ----
+    C1=1; C2=0; C3=1; C4=1;
+    if(R1==0) return '8';
+    if(R2==0) return '5';
+    if(R3==0) return '2';
+    if(R4==0) return '0';
+
+    // ---- Column 3 LOW ----
+    C1=1; C2=1; C3=0; C4=1;
+    if(R1==0) return '9';
+    if(R2==0) return '6';
+    if(R3==0) return '3';
+    if(R4==0) return '=';
+
+    // ---- Column 4 LOW ----
+    C1=1; C2=1; C3=1; C4=0;
+    if(R1==0) return '/';
+    if(R2==0) return '*';
+    if(R3==0) return '-';
+    if(R4==0) return '+';
+
+    return 0;
+}
+
+// wait until key released (simple debounce)
 char keypad_getkey(void)
 {
-    unsigned char row, col;
-
-    // Rows: P1.0..P1.3, Cols: P1.4..P1.7
-    // Set columns as inputs (write 1s), rows will be driven
-    KEYPAD |= 0xF0; // P1.4..P1.7 = 1
+    char k;
 
     while(1)
     {
-        for(row = 0; row < 4; row++)
+        k = keypad_scan();
+        if(k != 0)
         {
-            // Drive one row low, others high
-            KEYPAD |= 0x0F;         // all rows high
-            KEYPAD &= ~(1 << row);  // current row low
-
-            // Read columns
-            if((KEYPAD & 0xF0) != 0xF0)
+            delay_ms(25);
+            if(keypad_scan() == k)
             {
-                delay_ms(20); // debounce
-                if((KEYPAD & 0xF0) != 0xF0)
-                {
-                    // Find which column is low
-                    if((KEYPAD & 0x10) == 0) col = 0;
-                    else if((KEYPAD & 0x20) == 0) col = 1;
-                    else if((KEYPAD & 0x40) == 0) col = 2;
-                    else if((KEYPAD & 0x80) == 0) col = 3;
-                    else col = 0;
-
-                    // wait for release
-                    while((KEYPAD & 0xF0) != 0xF0);
-
-                    return keymap[row][col];
-                }
+                while(keypad_scan() != 0); // wait release
+                return k;
             }
         }
     }
 }
 
-// ----------- Calculator logic -------------
-long apply_op(long a, long b, char op, bit *err)
+// =============== CALC LOGIC ==============
+long calc_apply(long a, long b, char op, bit *err)
 {
     *err = 0;
+
     switch(op)
     {
         case '+': return a + b;
@@ -152,48 +176,53 @@ long apply_op(long a, long b, char op, bit *err)
         case '*': return a * b;
         case '/':
             if(b == 0) { *err = 1; return 0; }
-            return a / b; // integer division
-        default:
-            return b;
+            return a / b;  // integer division
+        default:  return b;
     }
 }
 
+// =============== MAIN ====================
 void main(void)
 {
-    long num1 = 0, num2 = 0, result = 0;
+    long num1 = 0, num2 = 0, res = 0;
     char op = 0;
-    char key;
     bit have_op = 0;
     bit err = 0;
+    char key;
+
+    // release port pins (good practice)
+    P0 = 0xFF;   // LCD data (Port0 uses pull-ups externally)
+    P3 = 0xFF;   // keypad lines to high
 
     lcd_init();
+
     lcd_goto(0,0);
-    lcd_print("8051 Calculator");
-    delay_ms(1000);
-    lcd_cmd(0x01);
+    lcd_print("AT89S52 Calc");
+    delay_ms(800);
+    lcd_clear();
 
     lcd_goto(0,0);
     lcd_print("Enter:");
-
     lcd_goto(1,0);
 
     while(1)
     {
         key = keypad_getkey();
 
-        // Clear
+        // CLEAR
         if(key == 'C')
         {
-            num1 = 0; num2 = 0; result = 0;
+            num1 = 0; num2 = 0; res = 0;
             op = 0; have_op = 0; err = 0;
-            lcd_cmd(0x01);
+
+            lcd_clear();
             lcd_goto(0,0);
             lcd_print("Enter:");
             lcd_goto(1,0);
             continue;
         }
 
-        // Operator
+        // OPERATOR
         if(key=='+' || key=='-' || key=='*' || key=='/')
         {
             if(!have_op)
@@ -204,18 +233,17 @@ void main(void)
                 lcd_data(op);
                 lcd_data(' ');
             }
-            // If operator pressed again, ignore (simple behavior)
             continue;
         }
 
-        // Evaluate
+        // EQUAL
         if(key == '=')
         {
             if(have_op)
             {
-                result = apply_op(num1, num2, op, &err);
+                res = calc_apply(num1, num2, op, &err);
 
-                lcd_cmd(0x01);
+                lcd_clear();
                 lcd_goto(0,0);
                 lcd_print("Result:");
 
@@ -223,10 +251,10 @@ void main(void)
                 if(err)
                     lcd_print("Error: /0");
                 else
-                    lcd_print_num(result);
+                    lcd_print_num(res);
 
-                // Prepare for next: result becomes num1
-                num1 = err ? 0 : result;
+                // make next calculation start from result
+                num1 = err ? 0 : res;
                 num2 = 0;
                 have_op = 0;
                 op = 0;
@@ -234,7 +262,7 @@ void main(void)
             continue;
         }
 
-        // Digit
+        // DIGIT
         if(key >= '0' && key <= '9')
         {
             lcd_data(key);
